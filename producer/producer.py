@@ -1,4 +1,5 @@
 import json
+import os
 import random
 import time
 import uuid
@@ -7,12 +8,19 @@ from datetime import datetime, timezone
 from confluent_kafka import Producer
 
 
-# ----------------------------
-# Kafka configuration
-# ----------------------------
+# ---------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------
 
-KAFKA_BROKER = "localhost:9092"
-TOPIC = "raw-telemetry"
+KAFKA_BROKER = os.getenv("KAFKA_BROKER", "localhost:9092")
+TOPIC = os.getenv("KAFKA_TOPIC", "raw-telemetry")
+
+EVENTS_PER_SECOND = float(os.getenv("EVENTS_PER_SECOND", "2"))
+
+ANOMALY_PROBABILITY = float(
+    os.getenv("ANOMALY_PROBABILITY", "0.03")
+)
+
 
 producer = Producer(
     {
@@ -22,78 +30,149 @@ producer = Producer(
 )
 
 
-# ----------------------------
-# Simulated devices
-# ----------------------------
+# ---------------------------------------------------------
+# Device profiles
+# ---------------------------------------------------------
 
-DEVICES = [
-    "device_001",
-    "device_002",
-    "device_003",
-    "device_004",
-    "device_005",
-]
+DEVICE_PROFILES = {
+    "device_001": {
+        "temperature": 65,
+        "vibration": 0.25,
+        "voltage": 230,
+    },
+    "device_002": {
+        "temperature": 68,
+        "vibration": 0.30,
+        "voltage": 229,
+    },
+    "device_003": {
+        "temperature": 72,
+        "vibration": 0.35,
+        "voltage": 231,
+    },
+    "device_004": {
+        "temperature": 66,
+        "vibration": 0.28,
+        "voltage": 230,
+    },
+    "device_005": {
+        "temperature": 70,
+        "vibration": 0.32,
+        "voltage": 228,
+    },
+}
 
 
 def generate_event(device_id: str) -> dict:
-    """
-    Generate one synthetic telemetry event.
-    """
+    profile = DEVICE_PROFILES[device_id]
 
-    event = {
+    is_anomaly = random.random() < ANOMALY_PROBABILITY
+
+    temperature = random.gauss(
+        profile["temperature"],
+        2,
+    )
+
+    vibration = random.gauss(
+        profile["vibration"],
+        0.04,
+    )
+
+    voltage = random.gauss(
+        profile["voltage"],
+        1.5,
+    )
+
+    # Inject abnormal behaviour
+    if is_anomaly:
+        anomaly_type = random.choice(
+            [
+                "temperature_spike",
+                "vibration_spike",
+                "voltage_drop",
+            ]
+        )
+
+        if anomaly_type == "temperature_spike":
+            temperature += random.uniform(20, 35)
+
+        elif anomaly_type == "vibration_spike":
+            vibration += random.uniform(1.0, 2.0)
+
+        elif anomaly_type == "voltage_drop":
+            voltage -= random.uniform(25, 50)
+
+    else:
+        anomaly_type = None
+
+    return {
         "event_id": str(uuid.uuid4()),
         "device_id": device_id,
         "event_time": datetime.now(timezone.utc).isoformat(),
-        "temperature": round(random.gauss(70, 3), 2),
-        "vibration": round(max(0, random.gauss(0.30, 0.05)), 3),
-        "voltage": round(random.gauss(230, 2), 2),
+        "temperature": round(temperature, 2),
+        "vibration": round(max(vibration, 0), 3),
+        "voltage": round(voltage, 2),
+        "is_injected_anomaly": is_anomaly,
+        "anomaly_type": anomaly_type,
     }
-
-    return event
 
 
 def delivery_report(err, msg):
-    """
-    Called by the Kafka client when Kafka confirms whether
-    a message was successfully delivered.
-    """
-
     if err is not None:
-        print(f"Delivery failed: {err}")
+        print(f"❌ Delivery failed: {err}")
     else:
         print(
-            f"Delivered to topic={msg.topic()} "
+            f"✅ delivered "
             f"partition={msg.partition()} "
             f"offset={msg.offset()}"
         )
 
 
 def main():
-    print("Starting telemetry producer...")
-    print(f"Kafka broker: {KAFKA_BROKER}")
+
+    sleep_interval = 1 / EVENTS_PER_SECOND
+
+    print("Starting telemetry producer")
+    print(f"Broker: {KAFKA_BROKER}")
     print(f"Topic: {TOPIC}")
-    print("Press Ctrl+C to stop.\n")
+    print(f"Rate: {EVENTS_PER_SECOND} events/sec")
+    print(f"Anomaly probability: {ANOMALY_PROBABILITY}")
+    print()
 
     try:
+
         while True:
-            device_id = random.choice(DEVICES)
+
+            device_id = random.choice(
+                list(DEVICE_PROFILES.keys())
+            )
 
             event = generate_event(device_id)
-
-            event_json = json.dumps(event)
 
             producer.produce(
                 topic=TOPIC,
                 key=device_id,
-                value=event_json,
+                value=json.dumps(event),
                 callback=delivery_report,
             )
 
             producer.poll(0)
 
-            print(f"Produced: {event_json}")
+            anomaly_marker = (
+                " ⚠️ ANOMALY"
+                if event["is_injected_anomaly"]
+                else ""
+            )
 
-            time.sleep(0.5)
+            print(
+                f"{device_id} | "
+                f"T={event['temperature']} | "
+                f"Vib={event['vibration']} | "
+                f"Volt={event['voltage']}"
+                f"{anomaly_marker}"
+            )
+
+            time.sleep(sleep_interval)
 
     except KeyboardInterrupt:
         print("\nStopping producer...")

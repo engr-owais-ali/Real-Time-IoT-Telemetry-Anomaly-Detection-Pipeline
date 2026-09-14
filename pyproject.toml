@@ -9,6 +9,8 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "confluent-kafka>=2.15.1",
+    "pyspark>=4.2.0",
+    "spark>=0.3.2",
 ]
 
 [project.scripts]
