@@ -21,6 +21,12 @@ ANOMALY_PROBABILITY = float(
     os.getenv("ANOMALY_PROBABILITY", "0.03")
 )
 
+DUPLICATE_PROBABILITY = float(
+    os.getenv("DUPLICATE_PROBABILITY", "0.05")
+)
+
+DUPLICATE_MIN_DELAY_SECONDS = 6
+DUPLICATE_MAX_DELAY_SECONDS = 12
 
 producer = Producer(
     {
@@ -129,7 +135,7 @@ def delivery_report(err, msg):
 
 
 def main():
-
+    pending_duplicates = []
     sleep_interval = 1 / EVENTS_PER_SECOND
 
     print("Starting telemetry producer")
@@ -137,11 +143,53 @@ def main():
     print(f"Topic: {TOPIC}")
     print(f"Rate: {EVENTS_PER_SECOND} events/sec")
     print(f"Anomaly probability: {ANOMALY_PROBABILITY}")
+    print(f"Duplicate probability: {DUPLICATE_PROBABILITY}")
+    print(f"Duplicate delay: {DUPLICATE_MIN_DELAY_SECONDS}-{DUPLICATE_MAX_DELAY_SECONDS} seconds")
     print()
 
     try:
 
         while True:
+
+            # -------------------------------------------------
+            # Resend duplicates whose retry time has arrived
+            # -------------------------------------------------
+
+            now = time.monotonic()
+
+            due_duplicates = [
+                item
+                for item in pending_duplicates
+                if item["due_at"] <= now
+            ]
+
+            pending_duplicates = [
+                item
+                for item in pending_duplicates
+                if item["due_at"] > now
+            ]
+
+            for item in due_duplicates:
+
+                duplicate_event = item["event"]
+
+                producer.produce(
+                    topic=TOPIC,
+                    key=duplicate_event["device_id"],
+                    value=json.dumps(duplicate_event),
+                    callback=delivery_report,
+                )
+
+                print(
+                    f"🔁 DUPLICATE resent | "
+                    f"event_id={duplicate_event['event_id']} | "
+                    f"device={duplicate_event['device_id']}"
+                )
+
+            # -------------------------------------------------
+            # Generate new telemetry event
+            # -------------------------------------------------
+
 
             device_id = random.choice(
                 list(DEVICE_PROFILES.keys())
@@ -155,6 +203,34 @@ def main():
                 value=json.dumps(event),
                 callback=delivery_report,
             )
+
+            # -------------------------------------------------
+            # Occasionally schedule the exact same event
+            # for retransmission
+            # -------------------------------------------------
+
+            if random.random() < DUPLICATE_PROBABILITY:
+
+                duplicate_delay = random.uniform(
+                    DUPLICATE_MIN_DELAY_SECONDS,
+                    DUPLICATE_MAX_DELAY_SECONDS,
+                )
+
+                pending_duplicates.append(
+                    {
+                        "due_at": (
+                            time.monotonic()
+                            + duplicate_delay
+                        ),
+                        "event": event.copy(),
+                    }
+                )
+
+                print(
+                    f"🔁 duplicate scheduled | "
+                    f"event_id={event['event_id']} | "
+                    f"delay={duplicate_delay:.1f}s"
+                )
 
             producer.poll(0)
 

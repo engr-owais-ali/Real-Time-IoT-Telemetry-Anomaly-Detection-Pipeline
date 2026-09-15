@@ -8,3 +8,5 @@ wheels/
 
 # Virtual environments
 .venv
+.checkpoints/
+.checkpoints/window_features_v1/state/0/91/4.delta
