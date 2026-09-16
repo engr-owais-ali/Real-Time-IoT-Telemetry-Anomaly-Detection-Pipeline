@@ -55,7 +55,7 @@ POSTGRES_DSN = os.getenv(
 
 STREAM_QUERY_NAME = os.getenv(
     "STREAM_QUERY_NAME",
-    "window_features_pg_v1",
+    "window_features_pg_v2",
 )
 
 # ---------------------------------------------------------

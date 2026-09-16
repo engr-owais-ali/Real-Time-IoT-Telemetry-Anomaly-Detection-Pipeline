@@ -10,15 +10,21 @@ services:
 
     ports:
       - "9092:9092"
+      - "7071:7071"
 
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
-
+      KAFKA_OPTS: >-
+        -javaagent:/opt/jmx-exporter/jmx_prometheus_javaagent-1.6.0.jar=7071:/opt/jmx-exporter/jmx-exporter.yml
+      
       KAFKA_LISTENERS: >-
         CONTROLLER://:9093,
         INTERNAL://:19092,
         EXTERNAL://:9092
+      
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      CLUSTER_ID: 4L6g3nShT-eMCtK--X86sw
 
       KAFKA_ADVERTISED_LISTENERS: >-
         INTERNAL://kafka:19092,
@@ -42,12 +48,14 @@ services:
 
     volumes:
       - kafka-data:/var/lib/kafka/data
+      - ./monitoring/kafka/jmx_prometheus_javaagent-1.6.0.jar:/opt/jmx-exporter/jmx_prometheus_javaagent-1.6.0.jar:ro
+      - ./monitoring/kafka/jmx-exporter.yml:/opt/jmx-exporter/jmx-exporter.yml:ro
 
     healthcheck:
       test:
         [
           "CMD-SHELL",
-          "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1"
+          "env -u KAFKA_OPTS /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1"
         ]
       interval: 5s
       timeout: 5s
@@ -246,7 +254,7 @@ services:
       KAFKA_BROKER: kafka:19092
       KAFKA_TOPIC: raw-telemetry
 
-      EVENTS_PER_SECOND: "2"
+      EVENTS_PER_SECOND: "5"
       ANOMALY_PROBABILITY: "0.03"
       DUPLICATE_PROBABILITY: "0.05"
 
@@ -272,6 +280,27 @@ services:
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
+    # -------------------------------------------------------
+  # Grafana
+  # -------------------------------------------------------
+
+  grafana:
+    image: grafana/grafana:13.2.1
+    container_name: telemetry-grafana
+
+    ports:
+      - "3000:3000"
+
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+
+    depends_on:
+      - prometheus
 
 volumes:
 
@@ -282,4 +311,5 @@ volumes:
   spark-features-checkpoint:
 
   prometheus-data:
+  grafana-data:
 
