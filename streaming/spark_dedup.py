@@ -13,19 +13,35 @@ from pyspark.sql.types import (
     StructField,
     StructType,
 )
-
+import os
 
 # ---------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------
 
-KAFKA_BROKER = "localhost:9092"
+KAFKA_BROKER = os.getenv(
+    "KAFKA_BROKER",
+    "localhost:9092",
+)
 
-INPUT_TOPIC = "raw-telemetry"
-OUTPUT_TOPIC = "clean-telemetry"
+INPUT_TOPIC = os.getenv(
+    "INPUT_TOPIC",
+    "raw-telemetry",
+)
+OUTPUT_TOPIC = os.getenv(
+    "OUTPUT_TOPIC",
+    "clean-telemetry",
+)
 
-CHECKPOINT_LOCATION = ".checkpoints/dedup_v2"
+STARTING_OFFSETS = os.getenv(
+    "STARTING_OFFSETS",
+    "latest",
+)
 
+CHECKPOINT_LOCATION = os.getenv(
+    "CHECKPOINT_LOCATION",
+    ".checkpoints/dedup_v1",
+)
 
 # ---------------------------------------------------------
 # Spark session
@@ -84,7 +100,7 @@ raw_stream = (
     )
     .option(
         "startingOffsets",
-        "latest",
+        STARTING_OFFSETS,
     )
     .load()
 )

@@ -28,19 +28,35 @@ from pyspark.sql.types import (
 # Configuration
 # ---------------------------------------------------------
 
-KAFKA_BROKER = "localhost:9092"
-KAFKA_TOPIC = "clean-telemetry"
+KAFKA_BROKER = os.getenv(
+    "KAFKA_BROKER",
+    "localhost:9092",
+)
 
-CHECKPOINT_LOCATION = ".checkpoints/window_features_v2"
+KAFKA_TOPIC = os.getenv(
+    "KAFKA_TOPIC",
+    "clean-telemetry",
+)
+
+STARTING_OFFSETS = os.getenv(
+    "STARTING_OFFSETS",
+    "latest",
+)
+
+CHECKPOINT_LOCATION = os.getenv(
+    "CHECKPOINT_LOCATION",
+    ".checkpoints/window_features_pg_v1",
+)
 
 POSTGRES_DSN = os.getenv(
     "POSTGRES_DSN",
     "postgresql://telemetry:telemetry@localhost:5432/telemetry",
 )
 
-STREAM_QUERY_NAME = "window_features_pg_v1"
-
-CHECKPOINT_LOCATION = ".checkpoints/window_features_pg_v1"
+STREAM_QUERY_NAME = os.getenv(
+    "STREAM_QUERY_NAME",
+    "window_features_pg_v1",
+)
 
 # ---------------------------------------------------------
 # Spark session
@@ -167,7 +183,7 @@ raw_stream = (
     )
     .option(
         "startingOffsets",
-        "latest",
+        STARTING_OFFSETS,
     )
     .load()
 )
